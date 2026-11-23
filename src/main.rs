@@ -8,13 +8,15 @@ use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde_json::Value;
 use std::env;
 use std::ffi::c_void;
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration as StdDuration;
-use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem, Submenu};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
@@ -25,10 +27,11 @@ use windows_sys::Win32::UI::Controls::{
     InitCommonControlsEx, ICC_PROGRESS_CLASS, INITCOMMONCONTROLSEX, PBM_SETPOS,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW, LoadCursorW,
-    PostQuitMessage, RegisterClassW, SendMessageW, ShowWindow, TranslateMessage, BS_GROUPBOX,
-    BS_PUSHBUTTON, CW_USEDEFAULT, IDC_ARROW, MSG, SW_SHOW, WM_COMMAND, WM_DESTROY, WM_SETFONT,
-    WNDCLASSW, WS_CAPTION, WS_CHILD, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_VISIBLE,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, FindWindowW, GetMessageW,
+    LoadCursorW, PostMessageW, PostQuitMessage, RegisterClassW, SendMessageW, ShowWindow,
+    TranslateMessage, BS_GROUPBOX, BS_PUSHBUTTON, CW_USEDEFAULT, IDC_ARROW, MSG, SW_SHOW,
+    WM_CLOSE, WM_COMMAND, WM_DESTROY, WM_SETFONT, WNDCLASSW, WS_CAPTION, WS_CHILD,
+    WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_VISIBLE,
 };
 use winit::event::{Event, StartCause};
 use winit::event_loop::{EventLoop, EventLoopProxy};
@@ -38,6 +41,7 @@ const REFRESH_SECS: u64 = 60;
 const WINDOW_CLASS: &str = "OpenCodeGoUsageWindow";
 
 static WINDOW_OPEN: AtomicBool = AtomicBool::new(false);
+static LANGUAGE_PROXY: OnceLock<Mutex<EventLoopProxy<UserEvent>>> = OnceLock::new();
 
 #[derive(Clone, Debug)]
 struct Meter {
@@ -71,6 +75,7 @@ enum UserEvent {
     Usage(UsageState),
     Tray(TrayIconEvent),
     Menu(MenuEvent),
+    SetLanguage(Lang),
 }
 
 fn credential_from_database() -> Result<Option<String>, String> {
@@ -126,6 +131,36 @@ fn resolve_token() -> Result<String, String> {
         }
     }
     Err("未找到有效凭据：请在 OpenCode GUI 中登录 OpenCode Go，或设置 OPENCODE_API_KEY".to_string())
+}
+
+fn language_path() -> Option<PathBuf> {
+    let base = env::var("APPDATA").ok()?;
+    Some(Path::new(&base).join("opencode-go-meter").join("language.txt"))
+}
+
+fn load_lang() -> Lang {
+    if let Ok(value) = env::var("OPENCODE_GO_LANG") {
+        if let Some(lang) = Lang::parse(&value) {
+            return lang;
+        }
+    }
+    if let Some(path) = language_path() {
+        if let Ok(text) = fs::read_to_string(path) {
+            if let Some(lang) = Lang::parse(&text) {
+                return lang;
+            }
+        }
+    }
+    Lang::En
+}
+
+fn save_lang(lang: Lang) {
+    if let Some(path) = language_path() {
+        if let Some(dir) = path.parent() {
+            let _ = fs::create_dir_all(dir);
+        }
+        let _ = fs::write(path, lang.code());
+    }
 }
 
 fn parse_meter(value: Option<&Value>) -> Option<Meter> {
@@ -446,6 +481,25 @@ unsafe fn create_usage_window(state: UsageState, lang: Lang) -> HWND {
     controls.push(add_label(hwnd, s.window_title, 24, 18, 500, 30, false));
     controls.push(add_label(hwnd, s.subtitle, 24, 48, 500, 20, false));
 
+    let language_buttons = [
+        (Lang::En, Lang::En.native_name(), 3, 20),
+        (Lang::Zh, Lang::Zh.native_name(), 4, 140),
+        (Lang::Ja, Lang::Ja.native_name(), 5, 260),
+    ];
+    for (_, label, id, x) in language_buttons {
+        controls.push(add_control(
+            hwnd,
+            "BUTTON",
+            label,
+            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON as u32,
+            x,
+            74,
+            110,
+            28,
+            id,
+        ));
+    }
+
     let mut add_meter = |label: &str, meter: Option<&Meter>, y: i32| {
         let (group_title, value, detail, percent) = match meter {
             Some(meter) => (
@@ -482,9 +536,9 @@ unsafe fn create_usage_window(state: UsageState, lang: Lang) -> HWND {
         controls.push(add_label(hwnd, &detail, 38, y + 76, 488, 20, false));
     };
 
-    add_meter(s.group_5h, state.rolling.as_ref(), 78);
-    add_meter(s.group_weekly, state.weekly.as_ref(), 192);
-    add_meter(s.group_month, state.monthly.as_ref(), 306);
+    add_meter(s.group_5h, state.rolling.as_ref(), 110);
+    add_meter(s.group_weekly, state.weekly.as_ref(), 222);
+    add_meter(s.group_month, state.monthly.as_ref(), 334);
 
     let updated = state
         .updated
@@ -494,7 +548,7 @@ unsafe fn create_usage_window(state: UsageState, lang: Lang) -> HWND {
         Some(error) => format!("{}：{}", s.error, truncate(error, 72)),
         None => format!("{} {}   ·   {}", s.last_updated, updated, s.reopen_hint),
     };
-    controls.push(add_label(hwnd, &footer, 24, 424, 520, 20, false));
+    controls.push(add_label(hwnd, &footer, 24, 448, 520, 20, false));
 
     controls.push(add_control(
         hwnd,
@@ -502,7 +556,7 @@ unsafe fn create_usage_window(state: UsageState, lang: Lang) -> HWND {
         s.open_console,
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON as u32,
         330,
-        452,
+        476,
         110,
         30,
         1,
@@ -513,7 +567,7 @@ unsafe fn create_usage_window(state: UsageState, lang: Lang) -> HWND {
         s.close,
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON as u32,
         450,
-        452,
+        476,
         80,
         30,
         2,
@@ -530,6 +584,12 @@ unsafe fn create_usage_window(state: UsageState, lang: Lang) -> HWND {
     hwnd
 }
 
+fn request_language(lang: Lang) {
+    if let Some(proxy) = LANGUAGE_PROXY.get() {
+        let _ = proxy.lock().unwrap().send_event(UserEvent::SetLanguage(lang));
+    }
+}
+
 unsafe extern "system" fn window_proc(
     hwnd: HWND,
     message: u32,
@@ -543,6 +603,12 @@ unsafe extern "system" fn window_proc(
                 open_console();
             } else if id == 2 {
                 DestroyWindow(hwnd);
+            } else if id == 3 {
+                request_language(Lang::En);
+            } else if id == 4 {
+                request_language(Lang::Zh);
+            } else if id == 5 {
+                request_language(Lang::Ja);
             }
             0
         }
@@ -585,8 +651,18 @@ fn open_usage_window(state: &UsageState, lang: Lang) {
     });
 }
 
+fn close_usage_window() {
+    unsafe {
+        let class_name = to_wide(WINDOW_CLASS);
+        let hwnd = FindWindowW(class_name.as_ptr(), std::ptr::null());
+        if !hwnd.is_null() {
+            PostMessageW(hwnd, WM_CLOSE, 0, 0);
+        }
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let lang = Lang::detect();
+    let mut lang = load_lang();
     let s = lang.strings();
 
     if env::args().any(|arg| arg == "--preview") {
@@ -605,6 +681,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let usage_proxy: EventLoopProxy<UserEvent> = event_loop.create_proxy();
     let tray_proxy = event_loop.create_proxy();
     let menu_proxy = event_loop.create_proxy();
+    let language_proxy = event_loop.create_proxy();
+    let _ = LANGUAGE_PROXY.set(Mutex::new(language_proxy));
     let (refresh_tx, refresh_rx): (Sender<()>, Receiver<()>) = mpsc::channel();
 
     thread::spawn(move || {
@@ -650,6 +728,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let refresh_id = refresh_item.id().clone();
     let console_id = console_item.id().clone();
     let quit_id = quit_item.id().clone();
+    let lang_en_id = MenuId::new("lang_en");
+    let lang_zh_id = MenuId::new("lang_zh");
+    let lang_ja_id = MenuId::new("lang_ja");
 
     let i5 = info5.clone();
     let iw = infow.clone();
@@ -671,6 +752,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = menu.append(&ri);
             let _ = menu.append(&ci);
             let _ = menu.append(&qi);
+            let _ = menu.append(&PredefinedMenuItem::separator());
+
+            let language_menu = Submenu::new(s.menu_language, true);
+            let _ = language_menu.append(&MenuItem::with_id(
+                lang_en_id.clone(),
+                Lang::En.native_name(),
+                true,
+                None,
+            ));
+            let _ = language_menu.append(&MenuItem::with_id(
+                lang_zh_id.clone(),
+                Lang::Zh.native_name(),
+                true,
+                None,
+            ));
+            let _ = language_menu.append(&MenuItem::with_id(
+                lang_ja_id.clone(),
+                Lang::Ja.native_name(),
+                true,
+                None,
+            ));
+            let _ = menu.append(&language_menu);
 
             let icon = TrayIconBuilder::new()
                 .with_menu(Box::new(menu))
@@ -698,6 +801,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Event::UserEvent(UserEvent::Tray(_)) => {}
         Event::UserEvent(UserEvent::Menu(event)) => {
             if event.id == refresh_id {
+                let s = lang.strings();
                 let _ = refresh_tx.send(());
                 let mut state = UsageState {
                     error: Some(format!("{}…", s.menu_refresh)),
@@ -713,6 +817,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 open_console();
             } else if event.id == quit_id {
                 event_loop.exit();
+            } else if event.id == lang_en_id {
+                request_language(Lang::En);
+            } else if event.id == lang_zh_id {
+                request_language(Lang::Zh);
+            } else if event.id == lang_ja_id {
+                request_language(Lang::Ja);
+            }
+        }
+        Event::UserEvent(UserEvent::SetLanguage(new_lang)) => {
+            if lang != new_lang {
+                lang = new_lang;
+                save_lang(lang);
+                let s = lang.strings();
+                ri.set_text(s.menu_refresh);
+                ci.set_text(s.menu_console);
+                qi.set_text(s.menu_quit);
+                update_menu(lang, &i5, &iw, &im, &current);
+                if let Some(icon) = &tray {
+                    let _ = icon.set_tooltip(Some(tooltip(lang, &current)));
+                }
+                if WINDOW_OPEN.load(Ordering::SeqCst) {
+                    close_usage_window();
+                    let state = current.clone();
+                    thread::spawn(move || {
+                        thread::sleep(StdDuration::from_millis(300));
+                        open_usage_window(&state, lang);
+                    });
+                }
             }
         }
         _ => {}

@@ -38,11 +38,22 @@ The tray icon is color-coded from the 5-hour window: **green** below 50%, **ambe
 
 ## Language support
 
-The UI language is auto-detected from Windows. Eight languages are built in:
+The default UI language is **English**. Switch it in two places:
+
+- **Tray menu → Language**: English / 中文 / 日本語
+- **Usage window**: three language buttons at the top of the window
+
+The choice is stored in:
+
+```text
+%APPDATA%\opencode-go-meter\language.txt
+```
+
+Eight languages ship in the binary:
 
 English · 简体中文 · 日本語 · 한국어 · Español · Français · Deutsch · Русский
 
-Force a language with:
+You can also force a language before startup:
 
 ```powershell
 $env:OPENCODE_GO_LANG = "zh"   # en / zh / ja / ko / es / fr / de / ru
@@ -56,7 +67,7 @@ $env:OPENCODE_GO_LANG = "zh"   # en / zh / ja / ko / es / fr / de / ru
 | **Right-click menu** | 5-hour, weekly, and monthly details; refresh; open Console; quit. |
 | **Double-click window** | Native Win32 window with three progress bars, status, and reset times. |
 | **Automatic refresh** | Polls once per minute; manual refresh from the menu or window. |
-| **Multi-language UI** | Eight languages, auto-detected, overridable via `OPENCODE_GO_LANG`. |
+| **Multi-language UI** | English / 中文 / 日本語 selectable in the tray menu and window. |
 | **Credential discovery** | Reads the active OpenCode Go credential from OpenCode Desktop's local database. |
 | **Read-only by design** | Opens `opencode.db` with `mode=ro`; never writes to OpenCode's data. |
 | **Single binary** | ~4 MB release executable; SQLite is bundled, no external runtime. |
@@ -240,11 +251,22 @@ OpenCode Go 有三层互相叠加的用量限制：
 
 ### 多语言支持
 
-界面语言自动跟随 Windows，内置 8 种语言：
+默认界面语言为 **English**。可在两处切换：
+
+- **托盘右键 → Language / 语言 / 言語**：English / 中文 / 日本語
+- **用量窗口顶部**：三个语言按钮
+
+选择会保存在：
+
+```text
+%APPDATA%\opencode-go-meter\language.txt
+```
+
+内置 8 种语言：
 
 English · 简体中文 · 日本語 · 한국어 · Español · Français · Deutsch · Русский
 
-如需强制指定语言：
+也可在启动前用环境变量强制指定：
 
 ```powershell
 $env:OPENCODE_GO_LANG = "zh"   # en / zh / ja / ko / es / fr / de / ru
@@ -264,7 +286,7 @@ $env:OPENCODE_GO_LANG = "zh"   # en / zh / ja / ko / es / fr / de / ru
 | **右键菜单** | 5 小时 / 每周 / 月度明细、刷新、打开 Console、退出。 |
 | **双击窗口** | 原生 Win32 窗口，带三条进度条、状态与重置时间。 |
 | **自动刷新** | 每分钟轮询一次，支持手动刷新。 |
-| **多语言界面** | 8 种语言自动检测，可用 `OPENCODE_GO_LANG` 覆盖。 |
+| **多语言界面** | 托盘菜单与窗口内可切换 English / 中文 / 日本語。 |
 | **自动发现凭据** | 从 OpenCode Desktop 本地数据库读取当前有效凭据。 |
 | **只读设计** | 以 `mode=ro` 打开 `opencode.db`，绝不写入 OpenCode 数据。 |
 | **单文件** | 约 4 MB 发布版可执行文件，SQLite 已打包。 |

@@ -1,10 +1,8 @@
 //! Multi-language support for the tray meter.
 //!
-//! Language is auto-detected from the Windows UI language, and can be forced
-//! with the `OPENCODE_GO_LANG` environment variable (`en`, `zh`, `ja`, `ko`,
-//! `es`, `fr`, `de`, `ru`).
-
-use windows_sys::Win32::Globalization::GetUserDefaultUILanguage;
+//! The UI language can be selected from the tray menu or the usage window.
+//! It is persisted locally and defaults to English. `OPENCODE_GO_LANG`
+//! can still be used to force a language.
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Lang {
@@ -33,6 +31,7 @@ pub struct Strings {
     pub menu_refresh: &'static str,
     pub menu_console: &'static str,
     pub menu_quit: &'static str,
+    pub menu_language: &'static str,
     pub menu_5h: &'static str,
     pub menu_weekly: &'static str,
     pub menu_month: &'static str,
@@ -46,36 +45,46 @@ pub struct Strings {
 }
 
 impl Lang {
-    /// Detect the UI language, honouring `OPENCODE_GO_LANG` when set.
-    pub fn detect() -> Self {
-        if let Ok(value) = std::env::var("OPENCODE_GO_LANG") {
-            match value.trim().to_lowercase().as_str() {
-                "en" | "en-us" | "en-gb" => return Lang::En,
-                "zh" | "zh-cn" | "zh-hans" | "zh-sg" => return Lang::Zh,
-                "ja" | "jp" => return Lang::Ja,
-                "ko" | "kr" => return Lang::Ko,
-                "es" => return Lang::Es,
-                "fr" => return Lang::Fr,
-                "de" => return Lang::De,
-                "ru" => return Lang::Ru,
-                _ => {}
-            }
+    /// Language code such as `en`, `zh`, `ja`.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Lang::En => "en",
+            Lang::Zh => "zh",
+            Lang::Ja => "ja",
+            Lang::Ko => "ko",
+            Lang::Es => "es",
+            Lang::Fr => "fr",
+            Lang::De => "de",
+            Lang::Ru => "ru",
         }
-
-        let langid = unsafe { GetUserDefaultUILanguage() };
-        Self::from_primary(langid & 0x3ff)
     }
 
-    fn from_primary(primary: u16) -> Self {
-        match primary {
-            0x04 => Lang::Zh,
-            0x11 => Lang::Ja,
-            0x12 => Lang::Ko,
-            0x0a => Lang::Es,
-            0x0c => Lang::Fr,
-            0x07 => Lang::De,
-            0x19 => Lang::Ru,
-            _ => Lang::En,
+    /// Parse a language code, returning `None` when unknown.
+    pub fn parse(code: &str) -> Option<Self> {
+        match code.trim().to_lowercase().as_str() {
+            "en" | "en-us" | "en-gb" => Some(Lang::En),
+            "zh" | "zh-cn" | "zh-hans" | "zh-sg" => Some(Lang::Zh),
+            "ja" | "jp" => Some(Lang::Ja),
+            "ko" | "kr" => Some(Lang::Ko),
+            "es" => Some(Lang::Es),
+            "fr" => Some(Lang::Fr),
+            "de" => Some(Lang::De),
+            "ru" => Some(Lang::Ru),
+            _ => None,
+        }
+    }
+
+    /// Native language name, used in the language picker.
+    pub fn native_name(&self) -> &'static str {
+        match self {
+            Lang::En => "English",
+            Lang::Zh => "中文",
+            Lang::Ja => "日本語",
+            Lang::Ko => "한국어",
+            Lang::Es => "Español",
+            Lang::Fr => "Français",
+            Lang::De => "Deutsch",
+            Lang::Ru => "Русский",
         }
     }
 
@@ -89,21 +98,6 @@ impl Lang {
             Lang::Fr => &FR,
             Lang::De => &DE,
             Lang::Ru => &RU,
-        }
-    }
-
-    /// Human readable language name, used in logs or diagnostics.
-    #[allow(dead_code)]
-    pub fn name(&self) -> &'static str {
-        match self {
-            Lang::En => "English",
-            Lang::Zh => "简体中文",
-            Lang::Ja => "日本語",
-            Lang::Ko => "한국어",
-            Lang::Es => "Español",
-            Lang::Fr => "Français",
-            Lang::De => "Deutsch",
-            Lang::Ru => "Русский",
         }
     }
 }
@@ -123,6 +117,7 @@ const EN: Strings = Strings {
     menu_refresh: "Refresh now",
     menu_console: "Open OpenCode Console",
     menu_quit: "Quit",
+    menu_language: "Language",
     menu_5h: "5h",
     menu_weekly: "Weekly",
     menu_month: "Monthly",
@@ -150,6 +145,7 @@ const ZH: Strings = Strings {
     menu_refresh: "立即刷新",
     menu_console: "打开 OpenCode Console",
     menu_quit: "退出",
+    menu_language: "语言",
     menu_5h: "5小时",
     menu_weekly: "每周",
     menu_month: "月度",
@@ -177,6 +173,7 @@ const JA: Strings = Strings {
     menu_refresh: "今すぐ更新",
     menu_console: "OpenCode Console を開く",
     menu_quit: "終了",
+    menu_language: "言語",
     menu_5h: "5時間",
     menu_weekly: "週間",
     menu_month: "月間",
@@ -204,6 +201,7 @@ const KO: Strings = Strings {
     menu_refresh: "지금 새로고침",
     menu_console: "OpenCode Console 열기",
     menu_quit: "종료",
+    menu_language: "언어",
     menu_5h: "5시간",
     menu_weekly: "주간",
     menu_month: "월간",
@@ -231,6 +229,7 @@ const ES: Strings = Strings {
     menu_refresh: "Actualizar ahora",
     menu_console: "Abrir OpenCode Console",
     menu_quit: "Salir",
+    menu_language: "Idioma",
     menu_5h: "5 h",
     menu_weekly: "Semanal",
     menu_month: "Mensual",
@@ -258,6 +257,7 @@ const FR: Strings = Strings {
     menu_refresh: "Actualiser",
     menu_console: "Ouvrir OpenCode Console",
     menu_quit: "Quitter",
+    menu_language: "Langue",
     menu_5h: "5 h",
     menu_weekly: "Semaine",
     menu_month: "Mois",
@@ -285,6 +285,7 @@ const DE: Strings = Strings {
     menu_refresh: "Jetzt aktualisieren",
     menu_console: "OpenCode Console öffnen",
     menu_quit: "Beenden",
+    menu_language: "Sprache",
     menu_5h: "5 h",
     menu_weekly: "Woche",
     menu_month: "Monat",
@@ -312,6 +313,7 @@ const RU: Strings = Strings {
     menu_refresh: "Обновить",
     menu_console: "Открыть OpenCode Console",
     menu_quit: "Выход",
+    menu_language: "Язык",
     menu_5h: "5 ч",
     menu_weekly: "Неделя",
     menu_month: "Месяц",
@@ -349,6 +351,7 @@ mod tests {
             assert!(!s.menu_refresh.is_empty());
             assert!(!s.menu_console.is_empty());
             assert!(!s.menu_quit.is_empty());
+            assert!(!s.menu_language.is_empty());
             assert!(!s.menu_5h.is_empty());
             assert!(!s.menu_weekly.is_empty());
             assert!(!s.menu_month.is_empty());
@@ -359,6 +362,13 @@ mod tests {
             assert!(!s.group_5h.is_empty());
             assert!(!s.group_weekly.is_empty());
             assert!(!s.group_month.is_empty());
+        }
+    }
+
+    #[test]
+    fn language_codes_round_trip() {
+        for lang in [Lang::En, Lang::Zh, Lang::Ja, Lang::Ko, Lang::Es, Lang::Fr, Lang::De, Lang::Ru] {
+            assert_eq!(Lang::parse(lang.code()), Some(lang));
         }
     }
 }
