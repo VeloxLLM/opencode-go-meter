@@ -8,8 +8,9 @@
 [![Windows](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-0078D6?logo=windows&logoColor=white)](https://www.microsoft.com/windows)
 [![License](https://img.shields.io/badge/License-MIT-2ea44f.svg)](LICENSE)
 [![Native](https://img.shields.io/badge/UI-Native%20Win32-4b5563.svg)](#native-window)
+[![Languages](https://img.shields.io/badge/UI%20Languages-8-4b5563.svg)](#language-support)
 
-English · [中文](README.zh-CN.md)
+English · [中文](#中文)
 
 [Features](#features) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Build from source](#build-from-source) · [Security](#security)
 
@@ -35,6 +36,18 @@ Checking the Console every time breaks focus. **OpenCode Go Meter** stays in the
 
 The tray icon is color-coded from the 5-hour window: **green** below 50%, **amber** from 50% to 79%, **red** at 80% or above, and **grey** when authentication fails.
 
+## Language support
+
+The UI language is auto-detected from Windows. Eight languages are built in:
+
+English · 简体中文 · 日本語 · 한국어 · Español · Français · Deutsch · Русский
+
+Force a language with:
+
+```powershell
+$env:OPENCODE_GO_LANG = "zh"   # en / zh / ja / ko / es / fr / de / ru
+```
+
 ## Features
 
 | | |
@@ -43,6 +56,7 @@ The tray icon is color-coded from the 5-hour window: **green** below 50%, **ambe
 | **Right-click menu** | 5-hour, weekly, and monthly details; refresh; open Console; quit. |
 | **Double-click window** | Native Win32 window with three progress bars, status, and reset times. |
 | **Automatic refresh** | Polls once per minute; manual refresh from the menu or window. |
+| **Multi-language UI** | Eight languages, auto-detected, overridable via `OPENCODE_GO_LANG`. |
 | **Credential discovery** | Reads the active OpenCode Go credential from OpenCode Desktop's local database. |
 | **Read-only by design** | Opens `opencode.db` with `mode=ro`; never writes to OpenCode's data. |
 | **Single binary** | ~4 MB release executable; SQLite is bundled, no external runtime. |
@@ -153,7 +167,7 @@ cargo test
 | `winit` | Event loop required by the tray backend |
 | `ureq` + `rustls` | HTTPS usage requests |
 | `rusqlite` (bundled) | Read-only access to OpenCode's local credential DB |
-| `windows-sys` | Native Win32 window, progress bars, and controls |
+| `windows-sys` | Native Win32 window, progress bars, controls, language detection |
 | `chrono` | RFC 3339 parsing and local reset times |
 | `serde_json` | Usage response parsing |
 
@@ -188,13 +202,13 @@ Unregister-ScheduledTask -TaskName OpenCodeGoMeter -Confirm:$false
 ├─ assets/
 │  └─ preview.png       # screenshot used in this README
 ├─ src/
+│  ├─ i18n.rs           # language table and auto-detection
 │  └─ main.rs           # tray, usage API, Win32 window
 ├─ Cargo.toml
 ├─ Cargo.lock
 ├─ run-tray.bat         # build-if-needed launcher
 ├─ LICENSE
-├─ README.md            # English
-└─ README.zh-CN.md      # 中文
+└─ README.md            # bilingual: English + 中文 (this file)
 ```
 
 ## Roadmap
@@ -205,5 +219,84 @@ Unregister-ScheduledTask -TaskName OpenCodeGoMeter -Confirm:$false
 - [ ] Signed release binaries
 
 ## License
+
+MIT © 2026 VeloxLLM
+
+---
+
+## 中文
+
+OpenCode Go 有三层互相叠加的用量限制：
+
+| 窗口 | 占月度额度比例 | 重置规则 |
+|---|---:|---|
+| 5 小时滚动窗口 | 20% | 首次使用后 5 小时 |
+| 每周窗口 | 50% | 每周一 00:00 UTC |
+| 月度额度 | 100% | 订阅周期开始时 |
+
+每次都去 Console 查看会打断专注。**OpenCode Go Meter** 常驻 Windows 通知区域，用量一瞥即知。
+
+> **原生 Win32 + Rust。** 没有 Electron、WebView，也没有 HTML。
+
+### 多语言支持
+
+界面语言自动跟随 Windows，内置 8 种语言：
+
+English · 简体中文 · 日本語 · 한국어 · Español · Français · Deutsch · Русский
+
+如需强制指定语言：
+
+```powershell
+$env:OPENCODE_GO_LANG = "zh"   # en / zh / ja / ko / es / fr / de / ru
+```
+
+### 预览
+
+![OpenCode Go Meter 原生用量窗口](assets/preview.png)
+
+托盘图标颜色随 5 小时窗口变化：**绿色** <50%，**橙色** 50–79%，**红色** ≥80%，认证异常时为**灰色**。
+
+### 功能
+
+| | |
+|---|---|
+| **托盘优先** | 悬停即可查看 5 小时与月度百分比。 |
+| **右键菜单** | 5 小时 / 每周 / 月度明细、刷新、打开 Console、退出。 |
+| **双击窗口** | 原生 Win32 窗口，带三条进度条、状态与重置时间。 |
+| **自动刷新** | 每分钟轮询一次，支持手动刷新。 |
+| **多语言界面** | 8 种语言自动检测，可用 `OPENCODE_GO_LANG` 覆盖。 |
+| **自动发现凭据** | 从 OpenCode Desktop 本地数据库读取当前有效凭据。 |
+| **只读设计** | 以 `mode=ro` 打开 `opencode.db`，绝不写入 OpenCode 数据。 |
+| **单文件** | 约 4 MB 发布版可执行文件，SQLite 已打包。 |
+
+### 快速开始
+
+```powershell
+git clone https://github.com/VeloxLLM/opencode-go-meter.git
+cd opencode-go-meter
+.\run-tray.bat
+```
+
+> **前提**：先在 OpenCode Desktop 中登录 OpenCode Go。程序读取的是 OpenCode Desktop 本地保存的当前有效凭据。
+
+若托盘图标被隐藏，请点击通知区域的 **^** 展开按钮。
+
+### 使用方式
+
+| 操作 | 效果 |
+|---|---|
+| 悬停托盘图标 | 显示 5 小时与月度百分比 |
+| 右键 | 5 小时 / 每周 / 月度明细、刷新、打开 Console、退出 |
+| 双击 | 打开原生用量窗口 |
+| `opencode-go-tray.exe --preview` | 直接打开用量窗口，不启动托盘 |
+
+### 安全
+
+- SQLite 数据库以 `SQLITE_OPEN_READ_ONLY` 打开，程序无法修改 OpenCode 数据。
+- API Key 仅保存在内存中，不会被写入磁盘或发送到 `opencode.ai` 之外的任何地方。
+- 无遥测、无统计上报，除用量接口外无其他后台请求。
+- 不读取会话内容、提示词或聊天数据；只读 `credential` 表中的凭据。
+
+### License
 
 MIT © 2026 VeloxLLM

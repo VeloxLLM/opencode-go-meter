@@ -2,6 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use chrono::{DateTime, Local, Utc};
+mod i18n;
+use i18n::Lang;
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde_json::Value;
 use std::env;
@@ -194,27 +196,29 @@ fn fetch_usage(token: &str) -> Result<UsageState, String> {
     })
 }
 
-fn status_text(meter: &Meter) -> &'static str {
+fn status_text(lang: Lang, meter: &Meter) -> &'static str {
+    let s = lang.strings();
     if meter.status == "rate-limited" {
-        "已触顶"
+        s.status_limited
     } else {
-        "正常"
+        s.status_ok
     }
 }
 
-fn remain_text(meter: &Meter) -> String {
+fn remain_text(lang: Lang, meter: &Meter) -> String {
+    let s = lang.strings();
     match meter.resets_at {
         Some(reset) => {
             let minutes = (reset - Utc::now()).num_minutes();
             if minutes <= 0 {
-                "即将刷新".to_string()
+                "0m".to_string()
             } else if minutes >= 60 {
-                format!("{}小时{}分", minutes / 60, minutes % 60)
+                format!("{}h {}m {}", minutes / 60, minutes % 60, s.reset_after)
             } else {
-                format!("{}分钟", minutes)
+                format!("{}m {}", minutes, s.reset_after)
             }
         }
-        None => "未知".to_string(),
+        None => "--".to_string(),
     }
 }
 
@@ -234,13 +238,17 @@ fn truncate(text: &str, max: usize) -> String {
     out
 }
 
-fn tooltip(state: &UsageState) -> String {
+fn tooltip(lang: Lang, state: &UsageState) -> String {
+    let s = lang.strings();
     if let Some(err) = &state.error {
         return format!("OpenCode Go - {}", truncate(err, 58));
     }
     let rolling = state.rolling.as_ref().map(|m| m.percent).unwrap_or(0);
     let monthly = state.monthly.as_ref().map(|m| m.percent).unwrap_or(0);
-    format!("OpenCode Go  5h {}%  月 {}%", rolling, monthly)
+    format!(
+        "OpenCode Go  {} {}%  {} {}%",
+        s.tooltip_5h, rolling, s.tooltip_month, monthly
+    )
 }
 
 fn make_icon(percent: Option<i32>, error: bool) -> Icon {
@@ -278,25 +286,33 @@ fn make_icon(percent: Option<i32>, error: bool) -> Icon {
     Icon::from_rgba(rgba, size as u32, size as u32).expect("创建托盘图标失败")
 }
 
-fn update_menu(info5: &MenuItem, infow: &MenuItem, infom: &MenuItem, state: &UsageState) {
+fn update_menu(
+    lang: Lang,
+    info5: &MenuItem,
+    infow: &MenuItem,
+    infom: &MenuItem,
+    state: &UsageState,
+) {
+    let s = lang.strings();
     let set = |item: &MenuItem, label: &str, meter: Option<&Meter>| match meter {
         Some(meter) => item.set_text(format!(
-            "{}  {}%  剩{}%  {}  {}后重置",
+            "{}  {}%  {} {}%  {}  {}",
             label,
             meter.percent,
+            s.remaining,
             100 - meter.percent,
-            status_text(meter),
-            remain_text(meter)
+            status_text(lang, meter),
+            remain_text(lang, meter)
         )),
-        None => item.set_text(format!("{}  暂无数据", label)),
+        None => item.set_text(format!("{}  {}", label, s.no_data)),
     };
-    set(info5, "5小时", state.rolling.as_ref());
-    set(infow, "每周  ", state.weekly.as_ref());
-    set(infom, "月度  ", state.monthly.as_ref());
+    set(info5, s.menu_5h, state.rolling.as_ref());
+    set(infow, s.menu_weekly, state.weekly.as_ref());
+    set(infom, s.menu_month, state.monthly.as_ref());
     if let Some(err) = &state.error {
-        info5.set_text(format!("错误：{}", truncate(err, 40)));
-        infow.set_text("请检查订阅或网络");
-        infom.set_text("双击托盘图标查看详情");
+        info5.set_text(format!("{}：{}", s.error, truncate(err, 40)));
+        infow.set_text(s.no_data);
+        infom.set_text(s.reopen_hint);
     }
 }
 
@@ -387,7 +403,8 @@ unsafe fn add_progress(parent: HWND, percent: i32, x: i32, y: i32) -> HWND {
     bar
 }
 
-unsafe fn create_usage_window(state: UsageState) -> HWND {
+unsafe fn create_usage_window(state: UsageState, lang: Lang) -> HWND {
+    let s = lang.strings();
     let instance = GetModuleHandleW(std::ptr::null());
     let class_name = to_wide(WINDOW_CLASS);
     let cursor = LoadCursorW(std::ptr::null_mut(), IDC_ARROW);
@@ -405,7 +422,7 @@ unsafe fn create_usage_window(state: UsageState) -> HWND {
     };
     RegisterClassW(&wc);
 
-    let title = to_wide("OpenCode Go 用量");
+    let title = to_wide(s.window_title);
     let hwnd = CreateWindowExW(
         0,
         class_name.as_ptr(),
@@ -426,31 +443,29 @@ unsafe fn create_usage_window(state: UsageState) -> HWND {
 
     let font = GetStockObject(DEFAULT_GUI_FONT);
     let mut controls = Vec::new();
-    controls.push(add_label(hwnd, "OpenCode Go 用量", 24, 18, 500, 30, false));
-    controls.push(add_label(
-        hwnd,
-        "5 小时窗口  ·  每周窗口  ·  月度额度",
-        24,
-        48,
-        500,
-        20,
-        false,
-    ));
+    controls.push(add_label(hwnd, s.window_title, 24, 18, 500, 30, false));
+    controls.push(add_label(hwnd, s.subtitle, 24, 48, 500, 20, false));
 
     let mut add_meter = |label: &str, meter: Option<&Meter>, y: i32| {
         let (group_title, value, detail, percent) = match meter {
             Some(meter) => (
                 format!("{}  ·  {}%", label, meter.percent),
                 format!(
-                    "已用 {}%      剩余 {}%      {}",
+                    "{} {}%      {} {}%      {}",
+                    s.used,
                     meter.percent,
+                    s.remaining,
                     100 - meter.percent,
-                    status_text(meter)
+                    status_text(lang, meter)
                 ),
-                format!("{}后重置 · {}", remain_text(meter), reset_local_text(meter)),
+                format!(
+                    "{} · {}",
+                    remain_text(lang, meter),
+                    reset_local_text(meter)
+                ),
                 meter.percent,
             ),
-            None => (label.to_string(), "暂无数据".to_string(), String::new(), 0),
+            None => (label.to_string(), s.no_data.to_string(), String::new(), 0),
         };
         controls.push(add_group(hwnd, &group_title, y));
         controls.push(add_label(hwnd, &value, 38, y + 24, 300, 22, false));
@@ -467,24 +482,24 @@ unsafe fn create_usage_window(state: UsageState) -> HWND {
         controls.push(add_label(hwnd, &detail, 38, y + 76, 488, 20, false));
     };
 
-    add_meter("5 小时窗口", state.rolling.as_ref(), 78);
-    add_meter("每周窗口", state.weekly.as_ref(), 192);
-    add_meter("月度额度", state.monthly.as_ref(), 306);
+    add_meter(s.group_5h, state.rolling.as_ref(), 78);
+    add_meter(s.group_weekly, state.weekly.as_ref(), 192);
+    add_meter(s.group_month, state.monthly.as_ref(), 306);
 
     let updated = state
         .updated
         .map(|t| t.format("%Y-%m-%d %H:%M:%S").to_string())
-        .unwrap_or_else(|| "未知".to_string());
+        .unwrap_or_else(|| "--".to_string());
     let footer = match &state.error {
-        Some(error) => format!("错误：{}", truncate(error, 72)),
-        None => format!("最近更新：{}   ·   双击托盘图标可重新打开", updated),
+        Some(error) => format!("{}：{}", s.error, truncate(error, 72)),
+        None => format!("{} {}   ·   {}", s.last_updated, updated, s.reopen_hint),
     };
     controls.push(add_label(hwnd, &footer, 24, 424, 520, 20, false));
 
     controls.push(add_control(
         hwnd,
         "BUTTON",
-        "打开 Console",
+        s.open_console,
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON as u32,
         330,
         452,
@@ -495,7 +510,7 @@ unsafe fn create_usage_window(state: UsageState) -> HWND {
     controls.push(add_control(
         hwnd,
         "BUTTON",
-        "关闭",
+        s.close,
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON as u32,
         450,
         452,
@@ -539,7 +554,7 @@ unsafe extern "system" fn window_proc(
     }
 }
 
-fn show_usage_window(state: UsageState) {
+fn show_usage_window(state: UsageState, lang: Lang) {
     unsafe {
         let icc = INITCOMMONCONTROLSEX {
             dwSize: std::mem::size_of::<INITCOMMONCONTROLSEX>() as u32,
@@ -547,7 +562,7 @@ fn show_usage_window(state: UsageState) {
         };
         InitCommonControlsEx(&icc);
 
-        let hwnd = create_usage_window(state);
+        let hwnd = create_usage_window(state, lang);
         if hwnd.is_null() {
             return;
         }
@@ -559,18 +574,21 @@ fn show_usage_window(state: UsageState) {
     }
 }
 
-fn open_usage_window(state: &UsageState) {
+fn open_usage_window(state: &UsageState, lang: Lang) {
     if WINDOW_OPEN.swap(true, Ordering::SeqCst) {
         return;
     }
     let state = state.clone();
     thread::spawn(move || {
-        show_usage_window(state);
+        show_usage_window(state, lang);
         WINDOW_OPEN.store(false, Ordering::SeqCst);
     });
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let lang = Lang::detect();
+    let s = lang.strings();
+
     if env::args().any(|arg| arg == "--preview") {
         let state = resolve_token()
             .and_then(|token| fetch_usage(&token))
@@ -579,7 +597,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 updated: Some(Local::now()),
                 ..UsageState::default()
             });
-        show_usage_window(state);
+        show_usage_window(state, lang);
         return Ok(());
     }
 
@@ -623,12 +641,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let _ = menu_proxy.send_event(UserEvent::Menu(event));
     }));
 
-    let info5 = MenuItem::with_id("info5", "5小时：获取中…", false, None);
-    let infow = MenuItem::with_id("infow", "每周：获取中…", false, None);
-    let infom = MenuItem::with_id("infom", "月度：获取中…", false, None);
-    let refresh_item = MenuItem::with_id("refresh", "立即刷新", true, None);
-    let console_item = MenuItem::with_id("console", "打开 OpenCode Console", true, None);
-    let quit_item = MenuItem::with_id("quit", "退出", true, None);
+    let info5 = MenuItem::with_id("info5", s.menu_5h, false, None);
+    let infow = MenuItem::with_id("infow", s.menu_weekly, false, None);
+    let infom = MenuItem::with_id("infom", s.menu_month, false, None);
+    let refresh_item = MenuItem::with_id("refresh", s.menu_refresh, true, None);
+    let console_item = MenuItem::with_id("console", s.menu_console, true, None);
+    let quit_item = MenuItem::with_id("quit", s.menu_quit, true, None);
     let refresh_id = refresh_item.id().clone();
     let console_id = console_item.id().clone();
     let quit_id = quit_item.id().clone();
@@ -656,7 +674,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let icon = TrayIconBuilder::new()
                 .with_menu(Box::new(menu))
-                .with_tooltip(tooltip(&current))
+                .with_tooltip(tooltip(lang, &current))
                 .with_icon(make_icon(None, false))
                 .build()
                 .expect("创建托盘图标失败");
@@ -667,30 +685,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Event::UserEvent(UserEvent::Usage(state)) => {
             current = state;
             if let Some(icon) = &tray {
-                let _ = icon.set_tooltip(Some(tooltip(&current)));
+                let _ = icon.set_tooltip(Some(tooltip(lang, &current)));
                 let percent = current.rolling.as_ref().map(|m| m.percent);
                 let _ = icon.set_icon(Some(make_icon(percent, current.error.is_some())));
             }
-            update_menu(&i5, &iw, &im, &current);
+            update_menu(lang, &i5, &iw, &im, &current);
         }
         Event::UserEvent(UserEvent::Tray(TrayIconEvent::DoubleClick { .. })) => {
-            update_menu(&i5, &iw, &im, &current);
-            open_usage_window(&current);
+            update_menu(lang, &i5, &iw, &im, &current);
+            open_usage_window(&current, lang);
         }
         Event::UserEvent(UserEvent::Tray(_)) => {}
         Event::UserEvent(UserEvent::Menu(event)) => {
             if event.id == refresh_id {
                 let _ = refresh_tx.send(());
                 let mut state = UsageState {
-                    error: Some("正在刷新…".to_string()),
+                    error: Some(format!("{}…", s.menu_refresh)),
                     ..UsageState::default()
                 };
                 state.updated = Some(Local::now());
                 current = state;
                 if let Some(icon) = &tray {
-                    let _ = icon.set_tooltip(Some(tooltip(&current)));
+                    let _ = icon.set_tooltip(Some(tooltip(lang, &current)));
                 }
-                update_menu(&i5, &iw, &im, &current);
+                update_menu(lang, &i5, &iw, &im, &current);
             } else if event.id == console_id {
                 open_console();
             } else if event.id == quit_id {
@@ -717,7 +735,7 @@ mod tests {
         })))
         .unwrap();
         assert_eq!(meter.percent, 37);
-        assert_eq!(status_text(&meter), "正常");
+        assert_eq!(status_text(Lang::Zh, &meter), "正常");
         assert!(meter.resets_at.is_some());
     }
 
@@ -732,7 +750,10 @@ mod tests {
             error: None,
             updated: None,
         };
-        assert_eq!(tooltip(&state), "OpenCode Go  5h 30%  月 50%");
+        assert_eq!(
+            tooltip(Lang::Zh, &state),
+            "OpenCode Go  5h 30%  月 50%"
+        );
     }
 
     #[test]
@@ -741,7 +762,7 @@ mod tests {
             error: Some("x".repeat(120)),
             ..UsageState::default()
         };
-        assert!(tooltip(&state).chars().count() <= 80);
+        assert!(tooltip(Lang::En, &state).chars().count() <= 80);
     }
 
     #[test]
