@@ -322,6 +322,7 @@ unsafe fn add_control(
     y: i32,
     width: i32,
     height: i32,
+    id: usize,
 ) -> HWND {
     let class = to_wide(class_name);
     let text = to_wide(text);
@@ -335,7 +336,7 @@ unsafe fn add_control(
         width,
         height,
         parent,
-        std::ptr::null_mut(),
+        id as *mut c_void,
         std::ptr::null_mut(),
         std::ptr::null(),
     )
@@ -351,7 +352,7 @@ unsafe fn add_label(
     right_aligned: bool,
 ) -> HWND {
     let style = WS_CHILD | WS_VISIBLE | if right_aligned { 2 } else { 0 };
-    add_control(parent, "STATIC", text, style, x, y, width, height)
+    add_control(parent, "STATIC", text, style, x, y, width, height, 0)
 }
 
 unsafe fn add_group(parent: HWND, title: &str, y: i32) -> HWND {
@@ -364,6 +365,7 @@ unsafe fn add_group(parent: HWND, title: &str, y: i32) -> HWND {
         y,
         520,
         106,
+        0,
     )
 }
 
@@ -377,6 +379,7 @@ unsafe fn add_progress(parent: HWND, percent: i32, x: i32, y: i32) -> HWND {
         y,
         488,
         16,
+        0,
     );
     if !bar.is_null() {
         SendMessageW(bar, PBM_SETPOS, percent as usize, 0);
@@ -487,6 +490,7 @@ unsafe fn create_usage_window(state: UsageState) -> HWND {
         452,
         110,
         30,
+        1,
     ));
     controls.push(add_control(
         hwnd,
@@ -497,6 +501,7 @@ unsafe fn create_usage_window(state: UsageState) -> HWND {
         452,
         80,
         30,
+        2,
     ));
 
     for control in controls {

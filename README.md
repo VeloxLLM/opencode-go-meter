@@ -9,6 +9,8 @@
 [![License](https://img.shields.io/badge/License-MIT-2ea44f.svg)](LICENSE)
 [![Native](https://img.shields.io/badge/UI-Native%20Win32-4b5563.svg)](#native-window)
 
+English · [中文](README.zh-CN.md)
+
 [Features](#features) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Build from source](#build-from-source) · [Security](#security)
 
 </div>
@@ -29,28 +31,7 @@ Checking the Console every time breaks focus. **OpenCode Go Meter** stays in the
 
 ## Preview
 
-```text
-┌─ OpenCode Go 用量 ────────────────────────────────────┐
-│                                                       │
-│  5 小时窗口  ·  100%                                  │
-│  已用 100%      剩余 0%      已触顶                   │
-│  ████████████████████████████████████████████████     │
-│  12分钟后重置 · 17:52:13                              │
-│                                                       │
-│  每周窗口  ·  49%                                     │
-│  已用 49%       剩余 51%     正常                     │
-│  ███████████████████████░░░░░░░░░░░░░░░░░░░░░░░      │
-│  6天后重置 · 周一 08:00                               │
-│                                                       │
-│  月度额度  ·  35%                                     │
-│  已用 35%       剩余 65%     正常                     │
-│  █████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      │
-│  10天后重置 · 12-04 06:41                             │
-│                                                       │
-│  最近更新：2026-11-23 19:35:12                        │
-│                         [ 打开 Console ]  [ 关闭 ]    │
-└───────────────────────────────────────────────────────┘
-```
+![OpenCode Go Meter native window](assets/preview.png)
 
 The tray icon is color-coded from the 5-hour window: **green** below 50%, **amber** from 50% to 79%, **red** at 80% or above, and **grey** when authentication fails.
 
@@ -204,13 +185,16 @@ Unregister-ScheduledTask -TaskName OpenCodeGoMeter -Confirm:$false
 
 ```text
 .
+├─ assets/
+│  └─ preview.png       # screenshot used in this README
 ├─ src/
-│  └─ main.rs          # tray, usage API, Win32 window
+│  └─ main.rs           # tray, usage API, Win32 window
 ├─ Cargo.toml
 ├─ Cargo.lock
-├─ run-tray.bat        # build-if-needed launcher
+├─ run-tray.bat         # build-if-needed launcher
 ├─ LICENSE
-└─ README.md
+├─ README.md            # English
+└─ README.zh-CN.md      # 中文
 ```
 
 ## Roadmap
