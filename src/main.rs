@@ -146,7 +146,8 @@ fn load_lang() -> Lang {
     }
     if let Some(path) = language_path() {
         if let Ok(text) = fs::read_to_string(path) {
-            if let Some(lang) = Lang::parse(&text) {
+            let trimmed = text.trim_start_matches('\u{feff}').trim();
+            if let Some(lang) = Lang::parse(trimmed) {
                 return lang;
             }
         }
@@ -673,7 +674,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 updated: Some(Local::now()),
                 ..UsageState::default()
             });
-        show_usage_window(state, lang);
+
+        let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
+        let language_proxy = event_loop.create_proxy();
+        let _ = LANGUAGE_PROXY.set(Mutex::new(language_proxy));
+
+        let preview_state = state.clone();
+        open_usage_window(&state, lang);
+
+        event_loop.run(move |event, event_loop| match event {
+            Event::UserEvent(UserEvent::SetLanguage(new_lang)) => {
+                if lang != new_lang {
+                    lang = new_lang;
+                    save_lang(lang);
+                    if WINDOW_OPEN.load(Ordering::SeqCst) {
+                        close_usage_window();
+                        let state = preview_state.clone();
+                        thread::spawn(move || {
+                            let deadline = std::time::Instant::now() + StdDuration::from_millis(1500);
+                            while WINDOW_OPEN.load(Ordering::SeqCst)
+                                && std::time::Instant::now() < deadline
+                            {
+                                thread::sleep(StdDuration::from_millis(25));
+                            }
+                            open_usage_window(&state, lang);
+                        });
+                    }
+                }
+            }
+            Event::AboutToWait => {
+                if !WINDOW_OPEN.load(Ordering::SeqCst) {
+                    event_loop.exit();
+                }
+            }
+            _ => {}
+        })?;
         return Ok(());
     }
 
@@ -841,7 +876,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     close_usage_window();
                     let state = current.clone();
                     thread::spawn(move || {
-                        thread::sleep(StdDuration::from_millis(300));
+                        let deadline = std::time::Instant::now() + StdDuration::from_millis(1500);
+                        while WINDOW_OPEN.load(Ordering::SeqCst)
+                            && std::time::Instant::now() < deadline
+                        {
+                            thread::sleep(StdDuration::from_millis(25));
+                        }
                         open_usage_window(&state, lang);
                     });
                 }
