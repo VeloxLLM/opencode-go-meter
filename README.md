@@ -7,7 +7,7 @@
 [![Rust](https://img.shields.io/badge/Rust-1.90%2B-000000?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Windows](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-0078D6?logo=windows&logoColor=white)](https://www.microsoft.com/windows)
 [![License](https://img.shields.io/badge/License-MIT-2ea44f.svg)](LICENSE)
-[![Native](https://img.shields.io/badge/UI-Native%20Win32-4b5563.svg)](#native-window)
+[![Native](https://img.shields.io/badge/UI-Native%20Win32-4b5563.svg)](#features)
 [![Languages](https://img.shields.io/badge/UI%20Languages-8-4b5563.svg)](#language-support)
 
 English · [中文](#中文)
@@ -43,7 +43,7 @@ The default UI language is **English**. Switch it in two places:
 - **Tray menu → Language**: English / 中文 / 日本語
 - **Usage window**: three language buttons at the top of the window
 
-The choice is stored in:
+Switching takes effect immediately; if the usage window is open, it reopens in the new language. The choice is stored in:
 
 ```text
 %APPDATA%\opencode-go-meter\language.txt
@@ -67,7 +67,7 @@ $env:OPENCODE_GO_LANG = "zh"   # en / zh / ja / ko / es / fr / de / ru
 | **Right-click menu** | 5-hour, weekly, and monthly details; refresh; open Console; quit. |
 | **Double-click window** | Native Win32 window with three progress bars, status, and reset times. |
 | **Automatic refresh** | Polls once per minute; manual refresh from the menu or window. |
-| **Multi-language UI** | English / 中文 / 日本語 selectable in the tray menu and window. |
+| **Multi-language UI** | English / 中文 / 日本語 selectable in the tray menu and window; the choice persists. |
 | **Credential discovery** | Reads the active OpenCode Go credential from OpenCode Desktop's local database. |
 | **Read-only by design** | Opens `opencode.db` with `mode=ro`; never writes to OpenCode's data. |
 | **Single binary** | ~4 MB release executable; SQLite is bundled, no external runtime. |
@@ -94,14 +94,18 @@ cd opencode-go-meter
 
 If the icon is hidden, click the **^** overflow button in the notification area.
 
+> The UI starts in **English**. Switch to 中文 or 日本語 from the tray menu or the usage window at any time.
+
 ## Usage
 
 | Action | Result |
 |---|---|
 | Hover the tray icon | Tooltip with 5-hour and monthly percentages |
 | Right-click | Menu with 5h / weekly / monthly details, refresh, Console, quit |
+| Right-click → Language | Switch the UI language; the choice persists |
 | Double-click | Native usage window |
-| `opencode-go-tray.exe --preview` | Open the usage window directly, without the tray |
+| Window language buttons | Switch the UI language from inside the window |
+| `opencode-go-tray.exe --preview` | Open the usage window directly, without the tray; language switching works here too |
 
 The window can be closed normally; the tray process keeps running.
 
@@ -213,7 +217,7 @@ Unregister-ScheduledTask -TaskName OpenCodeGoMeter -Confirm:$false
 ├─ assets/
 │  └─ preview.png       # screenshot used in this README
 ├─ src/
-│  ├─ i18n.rs           # language table and auto-detection
+│  ├─ i18n.rs           # language table, picker, and persistence
 │  └─ main.rs           # tray, usage API, Win32 window
 ├─ Cargo.toml
 ├─ Cargo.lock
@@ -256,7 +260,7 @@ OpenCode Go 有三层互相叠加的用量限制：
 - **托盘右键 → Language / 语言 / 言語**：English / 中文 / 日本語
 - **用量窗口顶部**：三个语言按钮
 
-选择会保存在：
+切换立即生效；若用量窗口已打开，会自动以新语言重新打开。选择会保存在：
 
 ```text
 %APPDATA%\opencode-go-meter\language.txt
@@ -286,7 +290,7 @@ $env:OPENCODE_GO_LANG = "zh"   # en / zh / ja / ko / es / fr / de / ru
 | **右键菜单** | 5 小时 / 每周 / 月度明细、刷新、打开 Console、退出。 |
 | **双击窗口** | 原生 Win32 窗口，带三条进度条、状态与重置时间。 |
 | **自动刷新** | 每分钟轮询一次，支持手动刷新。 |
-| **多语言界面** | 托盘菜单与窗口内可切换 English / 中文 / 日本語。 |
+| **多语言界面** | 托盘菜单与窗口内可切换 English / 中文 / 日本語，选择会持久保存。 |
 | **自动发现凭据** | 从 OpenCode Desktop 本地数据库读取当前有效凭据。 |
 | **只读设计** | 以 `mode=ro` 打开 `opencode.db`，绝不写入 OpenCode 数据。 |
 | **单文件** | 约 4 MB 发布版可执行文件，SQLite 已打包。 |
@@ -303,14 +307,18 @@ cd opencode-go-meter
 
 若托盘图标被隐藏，请点击通知区域的 **^** 展开按钮。
 
+> 界面默认为 **English**。可随时在托盘菜单或用量窗口中切换到 中文 / 日本語。
+
 ### 使用方式
 
 | 操作 | 效果 |
 |---|---|
 | 悬停托盘图标 | 显示 5 小时与月度百分比 |
-| 右键 | 5 小时 / 每周 / 月度明细、刷新、打开 Console、退出 |
+| Right-click | 5 小时 / 每周 / 月度明细、刷新、打开 Console、退出 |
+| 右键 → 语言 | 切换界面语言，选择会持久保存 |
 | 双击 | 打开原生用量窗口 |
-| `opencode-go-tray.exe --preview` | 直接打开用量窗口，不启动托盘 |
+| 窗口语言按钮 | 在窗口内切换界面语言 |
+| `opencode-go-tray.exe --preview` | 直接打开用量窗口，不启动托盘；同样支持语言切换 |
 
 ### 安全
 
